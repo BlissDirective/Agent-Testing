@@ -1,1 +1,23 @@
-{}
+{
+  "model": "claude-opus-5-5",
+  "permissions": {
+    "allow": [
+      "Read(./target/**)",
+      "Edit(./notes/**)",
+      "Bash(file:*)",
+      "Bash(strings:*)",
+      "Bash(xxd:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)"
+    ],
+    "deny": [
+      "Edit(./target/**)",
+      "Read(./.env)",
+      "Read(~/.ssh/**)",
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(wget:*)"
+    ]
+  }
+}
