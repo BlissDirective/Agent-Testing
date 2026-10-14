@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voice Agent</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root { color-scheme: light dark; --accent: #2563eb; }
+      body { font: 16px/1.5 system-ui, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px 16px; }
+      h1 { font-size: 1.4rem; margin: 0 0 16px; }
+      button { font: inherit; padding: 10px 20px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+      button:disabled { opacity: 0.6; cursor: default; }
+      #status { color: GrayText; margin: 12px 0; min-height: 1.5em; }
+      #log p { margin: 6px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Voice Agent</h1>
+    <button id="call">Start call</button>
+    <p id="status">Press start and allow microphone access. Headphones work best.</p>
+    <div id="log"></div>
+    <script src="client.js" type="module"></script>
+  </body>
+</html>

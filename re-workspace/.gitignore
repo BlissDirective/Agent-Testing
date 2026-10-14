@@ -1,0 +1,3 @@
+# Fetched targets are third-party material; keep them out of git.
+target/*
+!target/.gitkeep
