@@ -4,6 +4,9 @@
     "allow": [
       "Read(./target/**)",
       "Edit(./notes/**)",
+      "Edit(./work/**)",
+      "Bash(tools/deobfuscate.sh:*)",
+      "Bash(./tools/deobfuscate.sh:*)",
       "Bash(file:*)",
       "Bash(strings:*)",
       "Bash(xxd:*)",
