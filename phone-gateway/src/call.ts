@@ -9,6 +9,9 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { AriError, type AriClient, type AriEvent } from "./ari.js";
 import type { GatewayConfig } from "./config.js";
 import { runMediaSession } from "./media.js";
+import { listenForSpeech, type Listener } from "./speech/listen.js";
+import type { SttEngine, SttEngineName } from "./speech/stt.js";
+import { splitSentences, type TtsOptions, type TtsService } from "./speech/tts.js";
 import type { Verb, VerbArgs } from "./verbs.js";
 import type { AppFormat, CallInfo, WebhookClient } from "./webhook.js";
 
@@ -26,6 +29,8 @@ export interface CallDeps {
   ari: AriClient;
   config: GatewayConfig;
   webhooks: WebhookClient;
+  tts: TtsService;
+  stt: Map<SttEngineName, SttEngine>;
   /** Route ARI events for this channel/bridge/playback id to the call. */
   claim: (id: string, call: Call) => void;
   release: (call: Call) => void;
@@ -221,6 +226,8 @@ export class Call {
         return this.ensureAnswered();
       case "pause":
         return this.sleep(verb.args.length * 1000, signal);
+      case "say":
+        return this.say(verb.args, signal);
       case "play":
         return this.play(verb.args, signal);
       case "gather":
@@ -271,37 +278,155 @@ export class Call {
     }
   }
 
+  private async say(args: VerbArgs<"say">, signal: AbortSignal): Promise<void> {
+    await this.ensureAnswered();
+    for (let i = 0; i < args.loop; i++) await this.speak(args.text, args, signal);
+  }
+
+  /**
+   * Speak text: synthesize sentence by sentence, playing each one while the
+   * next is prepared, so long messages start quickly. A TTS failure is logged
+   * and skipped rather than dropping the call.
+   */
+  private async speak(text: string, options: TtsOptions, signal: AbortSignal): Promise<void> {
+    const sentences = splitSentences(text);
+    const scope = scoped(signal);
+    const synth = (sentence: string) => {
+      const job = this.deps.tts.media(sentence, options, scope.signal);
+      job.catch(() => {}); // handled when awaited
+      return job;
+    };
+    try {
+      let next = sentences.length ? synth(sentences[0]!) : undefined;
+      for (let i = 0; i < sentences.length; i++) {
+        let media: string;
+        try {
+          media = await next!;
+        } catch (error) {
+          if (signal.aborted) throw signal.reason;
+          this.deps.log(`[${this.sid}] say failed: ${(error as Error).message}`);
+          return;
+        }
+        next = i + 1 < sentences.length ? synth(sentences[i + 1]!) : undefined;
+        await this.playOnce(media, signal);
+      }
+    } finally {
+      scope.abort();
+    }
+  }
+
+  /** The prompt of a gather: spoken text, then a sound, either optional. */
+  private async playPrompt(args: VerbArgs<"gather">, signal: AbortSignal): Promise<void> {
+    if (args.say) await this.speak(args.say, args, signal);
+    if (args.play && !signal.aborted) await this.playOnce(args.play, signal);
+  }
+
   private async gather(args: VerbArgs<"gather">, signal: AbortSignal): Promise<void> {
     await this.ensureAnswered();
-    const prompt = new AbortController();
-    const stopPrompt = () => prompt.abort();
-    signal.addEventListener("abort", stopPrompt, { once: true });
-    const promptDone = args.play ? this.playOnce(args.play, prompt.signal).catch(() => {}) : Promise.resolve();
-
+    const wantsDtmf = args.input.includes("dtmf");
+    const wantsSpeech = args.input.includes("speech");
+    const scope = scoped(signal);
+    const prompt = scoped(scope.signal);
     let digits = "";
-    const done = new Promise<void>((resolve) => {
-      let timer: NodeJS.Timeout | undefined;
-      // The timeout starts after the prompt finishes, like Twilio.
-      void promptDone.then(() => {
-        if (!digits) timer = setTimeout(resolve, args.timeout * 1000);
+    let speaking = false;
+    let onSpeechStart = () => {};
+
+    let listener: Listener | undefined;
+    if (wantsSpeech) {
+      listener = await listenForSpeech({
+        ari: this.deps.ari,
+        app: this.deps.config.ari.app,
+        rtpHost: this.deps.config.rtpHost,
+        channelId: this.channelId,
+        vad: { endSilence: args.speechTimeout, maxSpeech: args.maxSpeechTime },
+        noSpeechTimeout: args.timeout,
+        claim: (id) => this.deps.claim(id, this),
+        onSpeechStart: () => onSpeechStart(),
+        signal: scope.signal,
       });
-      this.dtmfHandler = (digit) => {
-        prompt.abort();
-        clearTimeout(timer);
-        if (digit === args.finishOnKey && args.finishOnKey) return resolve();
-        digits += digit;
-        if (args.numDigits && digits.length >= args.numDigits) return resolve();
-        timer = setTimeout(resolve, args.timeout * 1000);
-      };
-      signal.addEventListener("abort", () => resolve(), { once: true });
-    });
-    await done;
-    this.dtmfHandler = null;
-    prompt.abort();
-    await promptDone;
-    if (signal.aborted) throw signal.reason;
-    this.deps.log(`[${this.sid}] gathered "${digits}"`);
-    if (digits && args.actionHook) await this.runAction(args.actionHook, { digits });
+    }
+    const promptDone = this.playPrompt(args, prompt.signal).catch(() => {});
+
+    try {
+      const outcome = await new Promise<"digits" | "speech" | "none">((resolve) => {
+        let timer: NodeJS.Timeout | undefined;
+        const wait = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => resolve(digits ? "digits" : "none"), args.timeout * 1000);
+        };
+        // Like Twilio, the timeout starts once the prompt has finished.
+        void promptDone.then(() => {
+          if (speaking || digits) return;
+          listener?.armTimeout();
+          if (wantsDtmf) wait();
+        });
+        onSpeechStart = () => {
+          this.deps.log(`[${this.sid}] caller started speaking`);
+          speaking = true;
+          prompt.abort(); // barge-in: stop the prompt when the caller talks
+          clearTimeout(timer);
+        };
+        if (wantsDtmf) {
+          this.dtmfHandler = (digit) => {
+            prompt.abort();
+            if (listener) void listener.close(); // keypad wins over speech
+            if (digit === args.finishOnKey && args.finishOnKey) return resolve(digits ? "digits" : "none");
+            digits += digit;
+            if (args.numDigits && digits.length >= args.numDigits) return resolve("digits");
+            wait();
+          };
+        }
+        void listener?.result.then((audio) => {
+          if (audio) resolve("speech");
+          else if (!digits) resolve("none");
+        });
+        scope.signal.addEventListener("abort", () => resolve("none"), { once: true });
+      });
+
+      this.dtmfHandler = null;
+      prompt.abort();
+      if (signal.aborted) throw signal.reason;
+
+      if (outcome === "digits") {
+        this.deps.log(`[${this.sid}] gathered digits "${digits}"`);
+        if (args.actionHook) await this.runAction(args.actionHook, { digits });
+        return;
+      }
+      if (outcome === "speech") {
+        const audio = (await listener!.result)!;
+        const result = await this.transcribe(audio, args, signal);
+        if (!result) return; // nothing understood: carry on to the next verb, like Twilio
+        this.deps.log(`[${this.sid}] gathered speech "${result.text}" (${result.confidence})`);
+        if (args.actionHook) {
+          await this.runAction(args.actionHook, { speechResult: result.text, confidence: result.confidence });
+        }
+        return;
+      }
+      this.deps.log(`[${this.sid}] gather: no input`);
+    } finally {
+      this.dtmfHandler = null;
+      prompt.abort();
+      await promptDone;
+      await listener?.close();
+      scope.abort();
+    }
+  }
+
+  private async transcribe(audio: Buffer, args: VerbArgs<"gather">, signal: AbortSignal) {
+    const engineName = args.speechEngine ?? this.deps.config.stt.engine;
+    const engine = this.deps.stt.get(engineName);
+    if (!engine) {
+      this.deps.log(`[${this.sid}] speech engine ${engineName} is not configured`);
+      return null;
+    }
+    try {
+      const result = await engine.transcribe(audio, args.hints, signal);
+      return result.text ? result : null;
+    } catch (error) {
+      if (signal.aborted) throw signal.reason;
+      this.deps.log(`[${this.sid}] speech recognition failed: ${(error as Error).message}`);
+      return null;
+    }
   }
 
   private async connect(args: VerbArgs<"connect">, signal: AbortSignal): Promise<void> {

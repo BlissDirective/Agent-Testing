@@ -37,7 +37,7 @@ export async function getGlobal(name: string): Promise<string> {
  */
 export async function placeInboundCall(
   to: string,
-  caller: "listener" | "presser" | "talker",
+  caller: "listener" | "presser" | "talker" | "speaker",
   variables: Record<string, string> = {},
 ): Promise<void> {
   await testAri.request(

@@ -10,7 +10,7 @@
   "scripts": {
     "asterisk": "asterisk/start.sh",
     "start": "tsx src/main.ts",
-    "test": "tsx --test --test-timeout=60000 test/*.test.ts",
+    "test": "tsx --test --test-timeout=90000 --test-concurrency=1 test/*.test.ts",
     "test:unit": "tsx --test --test-timeout=20000 test/unit-*.test.ts",
     "typecheck": "tsc --noEmit"
   },

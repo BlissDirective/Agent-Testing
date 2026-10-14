@@ -10,7 +10,10 @@ import { parseVerbs } from "../src/verbs.js";
 test("verbs are validated, with defaults filled in", () => {
   const verbs = parseVerbs([{ play: { media: "sound:hello-world" } }, { gather: { numDigits: 4 } }, { hangup: {} }]);
   assert.deepEqual(verbs[0], { name: "play", args: { media: "sound:hello-world", loop: 1 } });
-  assert.deepEqual(verbs[1], { name: "gather", args: { numDigits: 4, finishOnKey: "#", timeout: 5 } });
+  assert.deepEqual(verbs[1], {
+    name: "gather",
+    args: { input: ["dtmf"], numDigits: 4, finishOnKey: "#", timeout: 5, speechTimeout: 1.2, maxSpeechTime: 15 },
+  });
   assert.throws(() => parseVerbs([{ dance: {} }]), /unknown verb "dance"/);
   assert.throws(() => parseVerbs([{ play: {}, hangup: {} }]), /exactly one key/);
   assert.throws(() => parseVerbs([{ connect: { url: "http://not-a-websocket" } }]), /connect/);
@@ -39,7 +42,8 @@ test("TwiML is translated into verbs", () => {
   );
   assert.deepEqual(verbs[0]!.args, { media: "https://example.com/hello.wav", loop: 2 });
   assert.deepEqual(verbs[1]!.args, {
-    numDigits: 3, finishOnKey: "#", timeout: 4, play: "sound:beep", actionHook: "https://app.example/digits",
+    input: ["dtmf"], numDigits: 3, finishOnKey: "#", timeout: 4, play: "sound:beep", say: undefined,
+    voice: undefined, speechTimeout: 1.2, maxSpeechTime: 15, hints: undefined, actionHook: "https://app.example/digits",
   });
   assert.deepEqual(verbs[2]!.args, {
     target: "+15551234", callerId: "+15550000", timeout: 20, record: true, actionHook: undefined,
@@ -50,7 +54,6 @@ test("TwiML is translated into verbs", () => {
   });
   assert.deepEqual(verbs[8]!.args, { reason: "busy" });
 
-  assert.throws(() => twimlToVerbs("<Response><Say>Hi</Say></Response>"), UnsupportedTwimlError);
   assert.throws(() => twimlToVerbs("<Response><Enqueue>support</Enqueue></Response>"), UnsupportedTwimlError);
   assert.throws(() => twimlToVerbs("<NotResponse/>"), /Response/);
 });

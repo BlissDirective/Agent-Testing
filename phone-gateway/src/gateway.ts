@@ -5,6 +5,8 @@
 import { AriClient, type AriEvent } from "./ari.js";
 import { Call, dialString, type CallApp, type CallDeps } from "./call.js";
 import { appFor, type GatewayConfig } from "./config.js";
+import { createSttEngines } from "./speech/stt.js";
+import { TtsService } from "./speech/tts.js";
 import { WebhookClient } from "./webhook.js";
 
 const KEEP_FINISHED_CALLS = 1000;
@@ -26,6 +28,8 @@ export class Gateway {
       ari: this.ari,
       config,
       webhooks: this.webhooks,
+      tts: new TtsService(config.tts, log),
+      stt: createSttEngines(config.stt),
       claim: (id, call) => this.routes.set(id, call),
       release: (call) => this.release(call),
       log,

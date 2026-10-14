@@ -51,7 +51,34 @@ flowchart LR
 
 ## Verbs (v1)
 
-`answer`, `pause`, `play`, `gather` (DTMF), `connect` (native or twilio, optional recording), `dial` (SIP URI, number via trunk, or dial string; optional recording), `record`, `hangup`, `reject`, `redirect`.
+`answer`, `pause`, `say` (text-to-speech), `play`, `gather` (DTMF and/or speech), `connect` (native or twilio, optional recording), `dial` (SIP URI, number via trunk, or dial string; optional recording), `record`, `hangup`, `reject`, `redirect`.
+
+## Speech (added in v1.1)
+
+```mermaid
+flowchart LR
+  CALL[Call] -- say: text --> TTS[TtsService<br/>cache by content]
+  TTS -- default --> PIPER[Piper<br/>speech/server.py]
+  TTS -- engine: elevenlabs --> EL[ElevenLabs API]
+  EL -. fails / no key .-> PIPER
+  TTS -- .wav16 file --> AST[Asterisk plays it]
+  AST -- snoop: caller audio only --> LST[listen.ts<br/>voice activity detection]
+  LST -- one utterance, 16 kHz --> STT{stt.engine}
+  STT --> WH[Whisper<br/>speech/server.py]
+  STT --> DG[Deepgram API<br/>ready, needs key]
+```
+
+- **Text-to-speech is file-based, not streamed:**
+  - Each sentence becomes a 16 kHz WAV in the cache, which Asterisk plays.
+  - Repeated phrases cost nothing.
+  - The first sentence plays while the next is synthesized, so time to first audio is one short sentence (about 150-350 ms with Piper on CPU).
+- **Spoken answers are captured from an ARI snoop channel** that hears only the caller. Prompts keep playing on the call, and the prompt's own audio can't trigger the detector.
+  - When speech starts, the prompt stops (barge-in).
+  - After `speechTimeout` seconds of silence, the answer is transcribed as one piece.
+- **Whisper runs in a small local server** (`speech/server.py`) that keeps the models loaded. It also serves Piper.
+  - About 1 s per answer on CPU with `base.en`.
+  - Deepgram is wired in behind the same interface for when you want lower latency.
+- **Tested live:** spoken text is recorded by the test caller and transcribed back word for word. A spoken answer is recognized while the caller interrupts the prompt, silence times out to the next verb, TwiML `<Gather input="speech">` works, and ElevenLabs falls back to Piper.
 
 ## Tested live (Asterisk + real RTP)
 
@@ -79,8 +106,6 @@ flowchart LR
    - metrics
    - running Asterisk and the gateway as a systemd or containers pair
 3. **Features:**
-   - `say` via the voice agent's TTS providers
-   - speech `gather`
    - conferences (ARI bridges with more than 2 parties)
    - SIP REFER transfers
    - call queues

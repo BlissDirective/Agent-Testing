@@ -17,10 +17,12 @@ The design notes are in [`../re-workspace/notes/phone-gateway-design.md`](../re-
 
 ## Run it
 
-Needs Node 22+ and Asterisk 20 (`apt install asterisk` on Ubuntu 24.04).
+Needs Node 22+, Asterisk 20, and, for speech, Python 3.10+ and sox (`apt install asterisk sox` on Ubuntu 24.04).
 
 ```bash
 npm install
+speech/setup.sh                       # once: installs Piper (text-to-speech) and Whisper (speech-to-text) locally
+speech/start.sh                       # local speech server on 127.0.0.1:8090
 asterisk/start.sh                     # gateway's own Asterisk instance: SIP udp/5060, ARI on 127.0.0.1:8088
 cp gateway.example.json gateway.json  # set apiKeys, webhookSecret, numbers
 npm start
@@ -48,9 +50,10 @@ Each number in `gateway.json` maps to an app. An app is either a fixed `verbs` l
 | Verb | What it does |
 |---|---|
 | `answer` | Answer now. Media verbs answer automatically. |
+| `say` `{ text, loop, engine, voice, speed }` | Speak text (text-to-speech). |
 | `pause` `{ length }` | Wait, in seconds. |
 | `play` `{ media, loop }` | Play an Asterisk sound (`sound:name`) or a WAV URL. |
-| `gather` `{ numDigits, finishOnKey, timeout, play, actionHook }` | Collect keypad digits, then POST `digits` to `actionHook`. |
+| `gather` `{ input, say, play, numDigits, finishOnKey, timeout, speechTimeout, maxSpeechTime, hints, actionHook }` | Collect keypad digits and/or a spoken answer (`input: ["speech", "dtmf"]`) while a prompt plays, then POST `digits` or `speechResult` + `confidence` to `actionHook`. The prompt stops as soon as the caller starts answering. |
 | `connect` `{ url, protocol, parameters, record, actionHook }` | Stream the call's audio to a WebSocket app until it disconnects. |
 | `dial` `{ target, callerId, timeout, record, actionHook }` | Call `sip:…`, a phone number (sent via the trunk) or a dial string, and bridge the two parties. |
 | `record` `{ maxLength, finishOnKey, beep, actionHook }` | Record the caller, then POST `recordingUrl`. |
@@ -60,9 +63,32 @@ Each number in `gateway.json` maps to an app. An app is either a fixed `verbs` l
 - `native`: binary PCM s16le, mono, 16 kHz, in both directions. It's the voice agent's protocol, and a `user-interrupted` message flushes queued audio for barge-in.
 - `twilio`: Twilio Media Streams (JSON, base64 μ-law 8 kHz, with `mark` and `clear`).
 
+### Speech
+
+The voice for `say` and `gather` prompts:
+- **Piper (default):** free and runs on this server. Change the voice with `tts.piper.voice`, or per verb with `voice`. Install more voices with `speech/setup.sh <voice-name>`, from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices).
+- **ElevenLabs:** more natural, paid. Set `ELEVENLABS_API_KEY` (or `tts.elevenlabs` in `gateway.json`), then use `"engine": "elevenlabs"` per verb or `tts.engine` globally.
+
+If ElevenLabs fails or has no key, the gateway falls back to Piper, so callers always hear the message. Speech is cached in `tts.cacheDir`, so each phrase is synthesized once. Long text is spoken sentence by sentence, so the first sentence starts while the rest are prepared.
+
+Spoken answers:
+- **Whisper:** the local default, about 1 s per answer on a CPU.
+- **Deepgram:** faster and hosted. Set `DEEPGRAM_API_KEY`, then use `stt.engine: "deepgram"` or `speechEngine` per gather.
+
+`hints` lists words to expect, which improves accuracy.
+
 When a verb with an `actionHook` finishes, the gateway POSTs the result there, and the reply replaces the remaining verbs.
 
-**TwiML apps** (`"format": "twiml"`) receive Twilio-style form posts (`CallSid`, `From`, `To`, `Digits`, …) and can reply with TwiML. Supported: `Play`, `Pause`, `Gather` (DTMF), `Dial` (`Number`/`Sip`), `Record`, `Connect`+`Stream`, `Redirect`, `Reject` and `Hangup`. Anything else (`Say`, speech recognition, queues) returns a clear error.
+**TwiML apps** (`"format": "twiml"`) receive Twilio-style form posts (`CallSid`, `From`, `To`, `Digits`, `SpeechResult`, …) and can reply with TwiML. Supported:
+- `Say`, including SSML text
+- `Play`, `Pause`
+- `Gather` with DTMF and/or speech, with a `Say` or `Play` prompt
+- `Dial` (`Number`/`Sip`)
+- `Record`
+- `Connect`+`Stream`
+- `Redirect`, `Reject`, `Hangup`
+
+Twilio voice names such as `Polly.Joanna` fall back to the default Piper voice. Anything unsupported (queues, conferences) returns a clear error.
 
 **Webhook signatures:**
 - JSON requests carry `X-Gateway-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "t.body">`. Verify it with `verifyJson` in `src/signing.ts`.
@@ -93,7 +119,7 @@ For an app, create and update calls with one of: `verbs`, `twiml`, or `url` (plu
 
 ```bash
 npm run test:unit   # no Asterisk needed
-npm test            # also runs live calls through the local Asterisk (skipped if it isn't running)
+npm test            # also live calls through Asterisk, and live speech if speech/start.sh is running
 ```
 
 The live tests place real calls through Asterisk with real RTP audio:
@@ -105,6 +131,11 @@ The live tests place real calls through Asterisk with real RTP audio:
 - a TwiML app using Twilio Media Streams
 - REST redirect, hangup and outbound calls
 - a real SIP call from SIPp
+- spoken text that the test caller records and Whisper transcribes back word for word
+- a spoken answer recognized while the caller talks over the prompt
+- silence timing out
+- a TwiML speech `Gather`
+- the ElevenLabs → Piper fallback
 
 ## Connecting a carrier
 
@@ -127,4 +158,6 @@ Calls already work over SIP. Calls to and from real phone numbers need a SIP tru
 | `src/twiml.ts` | TwiML → verbs |
 | `src/webhook.ts`, `src/signing.ts` | Webhooks and their signatures |
 | `src/api.ts` | REST API |
+| `src/speech/` | Text-to-speech (`tts.ts`), speech-to-text (`stt.ts`), and the spoken-answer listener (`listen.ts`) |
+| `speech/` | Local speech server (Piper + Whisper), with `setup.sh` and `start.sh` |
 | `asterisk/` | Self-contained Asterisk config and `start.sh` |

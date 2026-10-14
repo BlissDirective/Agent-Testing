@@ -26,6 +26,8 @@ const TWILIO_NAMES: Record<string, string> = {
   callStatus: "CallStatus",
   parentCallSid: "ParentCallSid",
   digits: "Digits",
+  speechResult: "SpeechResult",
+  confidence: "Confidence",
   recordingUrl: "RecordingUrl",
   recordingSid: "RecordingSid",
   recordingDuration: "RecordingDuration",

@@ -2,3 +2,8 @@ node_modules/
 asterisk/.run/
 .env
 gateway.json
+speech/.venv/
+speech/models/
+speech/cache/
+speech/server.log
+speech/.server.pid

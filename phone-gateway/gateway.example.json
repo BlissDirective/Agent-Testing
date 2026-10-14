@@ -1,17 +1,86 @@
 {
   "port": 3000,
   "publicUrl": "http://localhost:3000",
-  "apiKeys": ["change-me-to-a-long-random-api-key"],
+  "apiKeys": [
+    "change-me-to-a-long-random-api-key"
+  ],
   "webhookSecret": "change-me-to-a-long-random-webhook-secret",
-  "ari": { "url": "http://127.0.0.1:8088", "user": "gateway", "password": "gateway-dev-secret", "app": "gateway" },
+  "ari": {
+    "url": "http://127.0.0.1:8088",
+    "user": "gateway",
+    "password": "gateway-dev-secret",
+    "app": "gateway"
+  },
   "rtpHost": "127.0.0.1",
   "trunkDialString": "PJSIP/{number}@trunk",
   "recordingsDir": "./asterisk/.run/spool/recording",
   "numbers": {
     "+15550100": {
-      "verbs": [{ "connect": { "url": "ws://localhost:8080/call", "protocol": "native" } }, { "hangup": {} }]
+      "verbs": [
+        {
+          "connect": {
+            "url": "ws://localhost:8080/call",
+            "protocol": "native"
+          }
+        },
+        {
+          "hangup": {}
+        }
+      ]
     },
-    "+15550101": { "url": "https://your-app.example.com/voice", "format": "twiml", "statusCallback": "https://your-app.example.com/status" },
-    "default": { "verbs": [{ "play": { "media": "sound:hello-world" } }, { "hangup": {} }] }
+    "+15550101": {
+      "url": "https://your-app.example.com/voice",
+      "format": "twiml",
+      "statusCallback": "https://your-app.example.com/status"
+    },
+    "+15550102": {
+      "verbs": [
+        {
+          "gather": {
+            "input": [
+              "speech",
+              "dtmf"
+            ],
+            "say": "Thanks for calling. Say sales or support, or press 1 or 2.",
+            "hints": "sales, support",
+            "actionHook": "https://your-app.example.com/menu"
+          }
+        },
+        {
+          "say": {
+            "text": "Sorry, I didn't catch that. Goodbye."
+          }
+        },
+        {
+          "hangup": {}
+        }
+      ]
+    },
+    "default": {
+      "verbs": [
+        {
+          "say": {
+            "text": "Hello! This number isn't set up yet. Goodbye."
+          }
+        },
+        {
+          "hangup": {}
+        }
+      ]
+    }
+  },
+  "tts": {
+    "engine": "piper",
+    "cacheDir": "./speech/cache",
+    "piper": {
+      "url": "http://127.0.0.1:8090",
+      "voice": "en_US-lessac-medium"
+    }
+  },
+  "stt": {
+    "engine": "whisper",
+    "whisper": {
+      "url": "http://127.0.0.1:8090"
+    }
   }
 }

@@ -38,6 +38,27 @@ function text(node: Node): string {
     .trim();
 }
 
+/** All text inside a node, including inside SSML tags like <prosody> or <emphasis>. */
+function deepText(node: Node): string {
+  if (typeof node["#text"] === "string" || typeof node["#text"] === "number") return String(node["#text"]);
+  const tag = tagOf(node);
+  if (tag === "break") return " ";
+  // The parser trims text nodes, so rejoin pieces with spaces, then tidy punctuation.
+  return children(node)
+    .map(deepText)
+    .join(" ")
+    .replace(/\s+([.,!?;:])/g, "$1");
+}
+
+/**
+ * Twilio voices ("alice", "Polly.Joanna"…) don't exist here; a voice attribute
+ * that names a Piper voice (e.g. en_US-lessac-medium) is used, anything else
+ * falls back to the gateway's default voice.
+ */
+function sayVoice(voice: string | undefined): string | undefined {
+  return voice && /^[a-z]{2,3}_[A-Z]{2}-[\w]+-(x_low|low|medium|high)$/.test(voice) ? voice : undefined;
+}
+
 const num = (value: string | undefined) => (value === undefined ? undefined : Number(value));
 const bool = (value: string | undefined) => (value === undefined ? undefined : value === "true");
 
@@ -66,16 +87,21 @@ function translate(node: Node, out: unknown[]): void {
       out.push({ redirect: { url: text(node) } });
       return;
     case "Gather": {
-      if (a.input && !a.input.split(" ").includes("dtmf")) {
-        throw new UnsupportedTwimlError("<Gather input=\"speech\"> is not supported; use DTMF");
-      }
-      const prompt = children(node).find((c) => tagOf(c) === "Play");
+      const input = (a.input ?? "dtmf").split(/\s+/).filter((i) => i === "dtmf" || i === "speech");
+      const play = children(node).find((c) => tagOf(c) === "Play");
+      const say = children(node).find((c) => tagOf(c) === "Say");
       out.push({
         gather: {
+          input: input.length ? input : ["dtmf"],
           numDigits: num(a.numDigits),
           finishOnKey: a.finishOnKey ?? "#",
           timeout: num(a.timeout) ?? 5,
-          play: prompt ? media(text(prompt)) : undefined,
+          play: play ? media(text(play)) : undefined,
+          say: say ? deepText(say).replace(/\s+/g, " ").trim() || undefined : undefined,
+          voice: say ? sayVoice(attrs(say).voice) : undefined,
+          // Twilio's "auto" lets its model decide; a short fixed pause is the closest match.
+          speechTimeout: a.speechTimeout === undefined || a.speechTimeout === "auto" ? 1.2 : num(a.speechTimeout),
+          hints: a.hints,
           actionHook: a.action,
         },
       });
@@ -124,8 +150,11 @@ function translate(node: Node, out: unknown[]): void {
       out.push({ connect: { url: attrs(stream).url, protocol: "twilio", parameters, actionHook: a.action } });
       return;
     }
-    case "Say":
-      throw new UnsupportedTwimlError("<Say> needs text-to-speech, which this gateway doesn't have; use <Play> or <Connect><Stream>");
+    case "Say": {
+      const spoken = deepText(node).replace(/\s+/g, " ").trim();
+      if (spoken) out.push({ say: { text: spoken, loop: num(a.loop) || 1, voice: sayVoice(a.voice) } });
+      return;
+    }
     case "#text":
       return;
     default:

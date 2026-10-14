@@ -42,6 +42,29 @@ const configSchema = z.object({
   trunkDialString: z.string().default("PJSIP/{number}@trunk"),
   /** Where Asterisk writes recordings (its spool/recording directory). */
   recordingsDir: z.string(),
+  /** Text-to-speech for `say`. Piper runs locally via speech/start.sh. */
+  tts: z
+    .object({
+      engine: z.enum(["piper", "elevenlabs"]).default("piper"),
+      cacheDir: z.string().default("./speech/cache"),
+      piper: z.object({ url: z.string().url().default("http://127.0.0.1:8090"), voice: z.string().optional() }).default({ url: "http://127.0.0.1:8090" }),
+      elevenlabs: z
+        .object({
+          apiKey: z.string().min(1),
+          voiceId: z.string().default("21m00Tcm4TlvDq8ikWAM"),
+          modelId: z.string().default("eleven_flash_v2_5"),
+        })
+        .optional(),
+    })
+    .default({ engine: "piper", cacheDir: "./speech/cache", piper: { url: "http://127.0.0.1:8090" } }),
+  /** Speech-to-text for speech `gather`. Whisper runs locally via speech/start.sh. */
+  stt: z
+    .object({
+      engine: z.enum(["whisper", "deepgram"]).default("whisper"),
+      whisper: z.object({ url: z.string().url().default("http://127.0.0.1:8090") }).default({ url: "http://127.0.0.1:8090" }),
+      deepgram: z.object({ apiKey: z.string().min(1), model: z.string().default("nova-3") }).optional(),
+    })
+    .default({ engine: "whisper", whisper: { url: "http://127.0.0.1:8090" } }),
   /** App per dialed number (E.164 or SIP user); "default" catches the rest. */
   numbers: z.record(z.string(), appSchema).default({}),
 });
@@ -56,6 +79,12 @@ export async function loadConfig(path: string): Promise<GatewayConfig> {
   if (process.env.GATEWAY_API_KEY) raw.apiKeys = [process.env.GATEWAY_API_KEY];
   if (process.env.GATEWAY_WEBHOOK_SECRET) raw.webhookSecret = process.env.GATEWAY_WEBHOOK_SECRET;
   if (process.env.GATEWAY_ARI_PASSWORD) raw.ari = { ...raw.ari, password: process.env.GATEWAY_ARI_PASSWORD };
+  if (process.env.ELEVENLABS_API_KEY) {
+    raw.tts = { ...raw.tts, elevenlabs: { ...raw.tts?.elevenlabs, apiKey: process.env.ELEVENLABS_API_KEY } };
+  }
+  if (process.env.DEEPGRAM_API_KEY) {
+    raw.stt = { ...raw.stt, deepgram: { ...raw.stt?.deepgram, apiKey: process.env.DEEPGRAM_API_KEY } };
+  }
   return parseConfig(raw);
 }
 

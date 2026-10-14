@@ -12,9 +12,25 @@ import { z } from "zod";
 /** A URL the gateway POSTs to when a verb finishes; its reply replaces the remaining verbs. */
 const actionHook = z.string().url().optional();
 
+/** Text-to-speech settings shared by `say` and `gather` prompts. */
+const ttsFields = {
+  /** "piper" (local, free) or "elevenlabs"; defaults to the gateway's tts.engine. */
+  engine: z.enum(["piper", "elevenlabs"]).optional(),
+  /** Piper voice name or ElevenLabs voice id. */
+  voice: z.string().max(100).optional(),
+  speed: z.number().min(0.5).max(2).optional(),
+};
+
 export const verbSchemas = {
   answer: z.object({}).strict(),
   pause: z.object({ length: z.number().min(0).max(600).default(1) }).strict(),
+  say: z
+    .object({
+      text: z.string().min(1).max(5000),
+      loop: z.number().int().min(1).max(100).default(1),
+      ...ttsFields,
+    })
+    .strict(),
   play: z
     .object({
       /** "sound:<name>" for Asterisk sounds, or an http(s) URL to a WAV file. */
@@ -24,12 +40,25 @@ export const verbSchemas = {
     .strict(),
   gather: z
     .object({
+      /** What the caller may answer with: keypad digits, speech, or both. */
+      input: z.array(z.enum(["dtmf", "speech"])).min(1).default(["dtmf"]),
       numDigits: z.number().int().min(1).max(64).optional(),
       finishOnKey: z.string().regex(/^[0-9*#]?$/).default("#"),
-      /** Seconds to wait for the first digit, and between digits. */
+      /** Seconds to wait for the first digit or word, and between digits. */
       timeout: z.number().min(1).max(60).default(5),
-      /** Prompt to play while waiting; stops at the first key press. */
+      /** Prompt to play while waiting; stops when the caller starts answering. */
       play: z.string().optional(),
+      /** Prompt to speak (text-to-speech) while waiting; same rules as `play`. */
+      say: z.string().min(1).max(5000).optional(),
+      ...ttsFields,
+      /** Seconds of silence that end a spoken answer. */
+      speechTimeout: z.number().min(0.3).max(10).default(1.2),
+      /** Longest spoken answer, in seconds. */
+      maxSpeechTime: z.number().min(1).max(60).default(15),
+      /** Comma-separated words or phrases to expect (improves recognition). */
+      hints: z.string().max(500).optional(),
+      /** "whisper" (local) or "deepgram"; defaults to the gateway's stt.engine. */
+      speechEngine: z.enum(["whisper", "deepgram"]).optional(),
       actionHook,
     })
     .strict(),
