@@ -12,3 +12,9 @@
 - **Local model hardware.** Is there a GPU for Whisper and a local LLM? It decides whether "fully local" can stay under about 1 s.
 - **Telephony scope.** Inbound only, or also outbound? Your own SIP trunk, or a carrier's?
 - **Recordings and data retention.** Whether calls and transcripts are recorded and stored, and where (and the consent requirements that come with it).
+
+## Phone gateway (Twilio phase)
+- **Twilio webhook parameter names.** The exact names Twilio POSTs (Digits, RecordingUrl, DialCallStatus…) aren't in the public repos. The gateway's TwiML mode uses the commonly documented names; check them against Twilio's docs before relying on strict compatibility.
+- **Media Streams details.** Some fields of the `start` message (e.g. `mediaFormat`, `tracks`) are inferred, not confirmed from code. They're implemented to match Twilio's public docs.
+- **For you to decide:** carrier (SIP trunk) and numbers; whether call records must persist (a database); whether wideband (G.722/Opus) SIP calls matter. If they do, 16 kHz end to end needs a newer Asterisk or FreeSWITCH, since Asterisk 20's External Media can't receive slin16.
+- **Graceful drain on shutdown** isn't implemented yet. Today, stopping the gateway leaves live calls to Asterisk, and they hang up when the dialplan ends.

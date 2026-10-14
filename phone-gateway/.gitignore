@@ -1,0 +1,4 @@
+node_modules/
+asterisk/.run/
+.env
+gateway.json

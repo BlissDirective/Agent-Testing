@@ -307,7 +307,9 @@ export class CallSession {
 
   private onPlayoutCheck(): void {
     const turn = this.turn;
-    if (!turn || !turn.generationDone || Date.now() < this.playoutEndMs) return;
+    if (!turn || !turn.generationDone) return;
+    // Timers can fire a millisecond early; check again rather than stall the turn.
+    if (Date.now() < this.playoutEndMs) return this.schedulePlayoutCheck();
     this.turn = null;
     this.bargeInText = "";
     if (turn.audioStarted) {
