@@ -1,7 +1,9 @@
 {
   "model": "claude-opus-5-5",
+  "enabledMcpjsonServers": ["rea"],
   "permissions": {
     "allow": [
+      "mcp__rea",
       "Read(./target/**)",
       "Edit(./notes/**)",
       "Edit(./work/**)",
