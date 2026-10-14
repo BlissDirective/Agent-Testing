@@ -94,6 +94,18 @@ flowchart LR
 | REST outbound call | Status callbacks; a failed call is reported as failed. |
 | Real SIP call from SIPp | INVITE answered, BYE accepted, status callbacks. |
 
+## Call records and shutdown (added in v1.2)
+
+- **Call records:** SQLite via Node's built-in `node:sqlite` (`src/store.ts`).
+  - Every status change is written as it happens, so a crash loses at most the call in flight.
+  - On startup, calls left live by a crashed run are marked `failed` (`gateway-restart`), and their Asterisk channels are hung up, since nothing could drive them any more.
+  - Retention defaults to 90 days and deletes the recording files too.
+  - Moving to Postgres for several gateways is a swap of this one file.
+- **Graceful drain** (the jambonz lesson):
+  - SIGTERM puts the gateway in draining mode: new inbound calls get a SIP busy, new outbound calls get 503, and `/health` returns 503.
+  - Live calls get up to 5 minutes. After that, each hears a spoken goodbye and is hung up.
+  - Tested by stopping the real process with SIGTERM during a live call.
+
 ## Roadmap
 
 1. **Carrier:** pick a SIP trunk (Telnyx, Bandwidth, …), fill in `[trunk]` in `asterisk/etc/pjsip.conf` (registration/auth or IP auth), and map your numbers in `gateway.json`.
@@ -101,8 +113,6 @@ flowchart LR
    - TLS/SRTP
    - a firewall on 5060 and the RTP range
    - fail2ban-style SIP scanning protection
-   - persisting call records (currently in memory)
-   - graceful drain on SIGTERM (jambonz lesson)
    - metrics
    - running Asterisk and the gateway as a systemd or containers pair
 3. **Features:**

@@ -96,6 +96,26 @@ Twilio voice names such as `Polly.Joanna` fall back to the default Piper voice. 
 
 Status callbacks (`statusCallback`) receive the events `initiated`, `ringing`, `answered` and `completed`.
 
+## Call records
+
+Every call is saved in a SQLite database (`database`, default `./data/gateway.db`), so history survives restarts. That covers who called, when, how long, how it ended and its recordings. SQLite is built into Node, so no database server is needed.
+
+- Records and their recording files are deleted after `retentionDays` (default 90). This runs at startup and daily.
+- Calls a crashed or killed run left unfinished are marked `failed` with `endedReason: "gateway-restart"` on the next start. Any of their channels still open in Asterisk are hung up.
+- Calls the gateway refused are recorded too: `busy` while shutting down, `failed` when no app is configured for the number.
+
+Node prints an `ExperimentalWarning` for SQLite at startup. It's harmless.
+
+## Stopping and restarting
+
+Stop the gateway with `SIGTERM` (systemd, Docker and Kubernetes send it) or Ctrl-C, and it shuts down gracefully:
+
+1. **New callers get a busy signal**, so the carrier can retry another server. New outbound calls get HTTP `503` with `Retry-After`. `GET /health` returns `503 {"status":"draining"}`, so load balancers stop sending traffic.
+2. **Calls in progress continue** for up to `shutdown.drainSeconds` (default 300).
+3. **Calls still going after that** hear `shutdown.goodbye` ("We're sorry, we have to end this call now…") and are hung up. Their records show `endedReason: "gateway-shutdown"`.
+
+The gateway exits once every call has ended. Sending the signal a second time stops it immediately. Give your process manager a stop timeout longer than `drainSeconds`, for example `TimeoutStopSec=330` in systemd or `terminationGracePeriodSeconds: 330` in Kubernetes.
+
 ## REST API
 
 Every request needs `Authorization: Bearer <api key>`.
@@ -105,7 +125,8 @@ Every request needs `Authorization: Bearer <api key>`.
 curl -X POST localhost:3000/v1/calls -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
   -d '{"to":"sip:alice@192.0.2.10","from":"+15550000","verbs":[{"play":{"media":"sound:hello-world"}}]}'
 
-curl localhost:3000/v1/calls/CA… -H "Authorization: Bearer $KEY"                                  # status
+curl "localhost:3000/v1/calls?limit=20&status=completed" -H "Authorization: Bearer $KEY"            # history
+curl localhost:3000/v1/calls/CA… -H "Authorization: Bearer $KEY"                                  # one call + its recordings
 curl -X POST localhost:3000/v1/calls/CA… -H "Authorization: Bearer $KEY" \
   -H 'content-type: application/json' -d '{"verbs":[{"hangup":{}}]}'                              # redirect
 curl -X POST localhost:3000/v1/calls/CA… -H "Authorization: Bearer $KEY" \
@@ -136,6 +157,10 @@ The live tests place real calls through Asterisk with real RTP audio:
 - silence timing out
 - a TwiML speech `Gather`
 - the ElevenLabs → Piper fallback
+- call records and recordings surviving a restart
+- recovery after a crash
+- a drain: the short call finishes, a new caller gets busy, and the long call hears the goodbye
+- the real process stopping on `SIGTERM`
 
 ## Connecting a carrier
 
@@ -158,6 +183,7 @@ Calls already work over SIP. Calls to and from real phone numbers need a SIP tru
 | `src/twiml.ts` | TwiML → verbs |
 | `src/webhook.ts`, `src/signing.ts` | Webhooks and their signatures |
 | `src/api.ts` | REST API |
+| `src/store.ts` | Call records in SQLite, retention, crash recovery |
 | `src/speech/` | Text-to-speech (`tts.ts`), speech-to-text (`stt.ts`), and the spoken-answer listener (`listen.ts`) |
 | `speech/` | Local speech server (Piper + Whisper), with `setup.sh` and `start.sh` |
 | `asterisk/` | Self-contained Asterisk config and `start.sh` |

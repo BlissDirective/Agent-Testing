@@ -65,6 +65,25 @@ const configSchema = z.object({
       deepgram: z.object({ apiKey: z.string().min(1), model: z.string().default("nova-3") }).optional(),
     })
     .default({ engine: "whisper", whisper: { url: "http://127.0.0.1:8090" } }),
+  /** SQLite file for call records (":memory:" keeps nothing). */
+  database: z.string().default("./data/gateway.db"),
+  /** Call records and their recordings older than this are deleted. */
+  retentionDays: z.number().int().min(1).default(90),
+  /** What happens on SIGTERM/SIGINT (deploys, restarts). */
+  shutdown: z
+    .object({
+      /** Let calls in progress finish for up to this long; new calls get a busy signal meanwhile. */
+      drainSeconds: z.number().min(0).max(86400).default(300),
+      /** Spoken to calls still going when the time runs out, before hanging up. */
+      goodbye: z
+        .string()
+        .min(1)
+        .default("We're sorry, we have to end this call now. Please call back in a few minutes."),
+    })
+    .default({
+      drainSeconds: 300,
+      goodbye: "We're sorry, we have to end this call now. Please call back in a few minutes.",
+    }),
   /** App per dialed number (E.164 or SIP user); "default" catches the rest. */
   numbers: z.record(z.string(), appSchema).default({}),
 });

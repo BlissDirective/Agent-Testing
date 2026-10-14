@@ -17,6 +17,6 @@
 - **Twilio webhook parameter names.** The exact names Twilio POSTs (Digits, RecordingUrl, DialCallStatus…) aren't in the public repos. The gateway's TwiML mode uses the commonly documented names; check them against Twilio's docs before relying on strict compatibility.
 - **Media Streams details.** Some fields of the `start` message (e.g. `mediaFormat`, `tracks`) are inferred, not confirmed from code. They're implemented to match Twilio's public docs.
 - **For you to decide:** carrier (SIP trunk) and numbers; whether call records must persist (a database); whether wideband (G.722/Opus) SIP calls matter. If they do, 16 kHz end to end needs a newer Asterisk or FreeSWITCH, since Asterisk 20's External Media can't receive slin16.
-- **Graceful drain on shutdown** isn't implemented yet. Today, stopping the gateway leaves live calls to Asterisk, and they hang up when the dialplan ends.
 - **Speech recognition of brand names.** Whisper sometimes misspells names on phone audio ("Acme" heard as "Acne"). Use `hints` for names you expect, or switch to Deepgram (supports keyterms) where accuracy matters.
 - **Deepgram and ElevenLabs are untested live.** Both are implemented and unit-tested against mock servers, but haven't been called with real keys from this environment.
+- **Several gateways at once.** SQLite suits one gateway per server. Running several against one database (or one Asterisk) needs Postgres and a rule for which gateway owns which calls.

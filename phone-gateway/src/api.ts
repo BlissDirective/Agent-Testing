@@ -2,8 +2,9 @@
 // All routes need `Authorization: Bearer <api key>`.
 //
 //   POST /v1/calls              { to, from, url? | verbs? | twiml?, format?, statusCallback?, timeout? }
-//   GET  /v1/calls
-//   GET  /v1/calls/:sid
+//   GET  /v1/calls              ?limit=50&status=completed&before=<createdAt>  (history, newest first)
+//   GET  /v1/calls/:sid         (includes its recordings)
+//   GET  /health                (no auth; for load balancers: 200 when taking calls, 503 when draining)
 //   POST /v1/calls/:sid         { status: "completed" } | { verbs } | { twiml } | { url, format? }
 //   GET  /v1/recordings/:name.wav
 
@@ -14,7 +15,7 @@ import path from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { CallApp } from "./call.js";
-import type { Gateway } from "./gateway.js";
+import { DrainingError, type Gateway } from "./gateway.js";
 import { twimlToVerbs } from "./twiml.js";
 import { parseVerbs, type Verb } from "./verbs.js";
 
@@ -79,32 +80,73 @@ export function startApi(gateway: Gateway, port: number): Server {
     return keys.some((key) => key.length === token.length && timingSafeEqual(key, token));
   };
 
+  /** A call as the API shows it: live calls from memory, the rest from the database. */
+  const callJson = (sid: string) => {
+    const live = gateway.calls.get(sid);
+    const record = live && !live.endedAt ? live.toJSON() : gateway.store.getCall(sid);
+    return record && { ...record, recordings: gateway.store.listRecordings(sid).map((r) => ({
+      ...r, url: `${gateway.config.publicUrl}/v1/recordings/${r.name}.wav`,
+    })) };
+  };
+
   const server = createServer(async (req, res) => {
     try {
-      if (!authorized(req)) throw new HttpError(401, "Missing or invalid API key");
       const url = new URL(req.url ?? "/", "http://localhost");
+      if (url.pathname === "/health" && req.method === "GET") {
+        return send(res, gateway.draining ? 503 : 200, {
+          status: gateway.draining ? "draining" : "ok",
+          activeCalls: gateway.activeCalls.length,
+        });
+      }
+      if (!authorized(req)) throw new HttpError(401, "Missing or invalid API key");
       const parts = url.pathname.split("/").filter(Boolean); // ["v1", "calls", ":sid"]
       if (parts[0] !== "v1") throw new HttpError(404, "Not found");
 
       if (parts[1] === "calls" && parts.length === 2) {
-        if (req.method === "GET") return send(res, 200, [...gateway.calls.values()].map((c) => c.toJSON()));
+        if (req.method === "GET") {
+          const limit = Number(url.searchParams.get("limit") ?? 50);
+          const records = gateway.store.listCalls({
+            limit: Number.isFinite(limit) ? limit : 50,
+            status: url.searchParams.get("status") ?? undefined,
+            before: url.searchParams.get("before") ?? undefined,
+          });
+          // Live calls' durations change every second; take those from memory.
+          return send(res, 200, records.map((r) => {
+            const live = gateway.calls.get(r.sid);
+            return live && !live.endedAt ? live.toJSON() : r;
+          }));
+        }
         if (req.method === "POST") {
           const input = parse(createCallInput, await readJson(req));
-          const call = await gateway.createCall({
-            to: input.to,
-            from: input.from,
-            app: appFromInput(input),
-            timeout: input.timeout,
-          });
-          return send(res, 201, call.toJSON());
+          try {
+            const call = await gateway.createCall({
+              to: input.to,
+              from: input.from,
+              app: appFromInput(input),
+              timeout: input.timeout,
+            });
+            return send(res, 201, call.toJSON());
+          } catch (error) {
+            if (error instanceof DrainingError) {
+              res.setHeader("retry-after", "60");
+              throw new HttpError(503, error.message);
+            }
+            throw error;
+          }
         }
       }
 
       if (parts[1] === "calls" && parts.length === 3) {
-        const call = gateway.calls.get(parts[2]!);
-        if (!call) throw new HttpError(404, "No such call");
-        if (req.method === "GET") return send(res, 200, call.toJSON());
+        const sid = parts[2]!;
+        if (req.method === "GET") {
+          const record = callJson(sid);
+          if (!record) throw new HttpError(404, "No such call");
+          return send(res, 200, record);
+        }
         if (req.method === "POST") {
+          const call = gateway.calls.get(sid);
+          if (!call && gateway.store.getCall(sid)) throw new HttpError(409, "Call has ended");
+          if (!call) throw new HttpError(404, "No such call");
           const input = parse(updateCallInput, await readJson(req));
           if (call.endedAt) throw new HttpError(409, "Call has ended");
           if (input.status === "completed") {

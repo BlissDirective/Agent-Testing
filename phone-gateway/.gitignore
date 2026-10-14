@@ -7,3 +7,4 @@ speech/models/
 speech/cache/
 speech/server.log
 speech/.server.pid
+data/

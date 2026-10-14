@@ -82,5 +82,11 @@
     "whisper": {
       "url": "http://127.0.0.1:8090"
     }
+  },
+  "database": "./data/gateway.db",
+  "retentionDays": 90,
+  "shutdown": {
+    "drainSeconds": 300,
+    "goodbye": "We're sorry, we have to end this call now. Please call back in a few minutes."
   }
 }

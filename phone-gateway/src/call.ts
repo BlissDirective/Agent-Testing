@@ -34,6 +34,10 @@ export interface CallDeps {
   /** Route ARI events for this channel/bridge/playback id to the call. */
   claim: (id: string, call: Call) => void;
   release: (call: Call) => void;
+  /** Called whenever the call's status or timestamps change (to persist it). */
+  onChange: (call: Call) => void;
+  /** Called when a recording starts, and again with its duration when known. */
+  onRecording: (recording: { name: string; callSid: string; createdAt: string; durationSeconds?: number }) => void;
   log: (message: string) => void;
 }
 
@@ -60,6 +64,8 @@ export class Call {
   readonly createdAt = new Date();
   answeredAt?: Date;
   endedAt?: Date;
+  /** Set when the gateway ends the call itself (e.g. "gateway-shutdown"). */
+  endedReason?: string;
 
   private verbs: Verb[] = [];
   private current: AbortController = new AbortController();
@@ -106,6 +112,7 @@ export class Call {
       answeredAt: this.answeredAt?.toISOString(),
       endedAt: this.endedAt?.toISOString(),
       duration: this.durationSeconds,
+      endedReason: this.endedReason,
     };
   }
 
@@ -188,6 +195,7 @@ export class Call {
 
   private setStatus(status: CallStatus): void {
     this.status = status;
+    this.deps.onChange(this);
   }
 
   private markAnswered(): void {
@@ -543,6 +551,7 @@ export class Call {
       // The caller hung up mid-recording (the usual end of a voicemail): the
       // recording is still saved, so report it once Asterisk finishes it.
       const late = await this.waitFor(isDone, AbortSignal.timeout(3000)).catch(() => undefined);
+      this.saveRecordingDuration(name, late?.recording?.duration);
       if (args.actionHook) {
         this.notifyAction(args.actionHook, {
           ...this.recordingInfo(name),
@@ -553,6 +562,7 @@ export class Call {
     } finally {
       scope.abort();
     }
+    this.saveRecordingDuration(name, event.recording?.duration);
     if (args.actionHook) {
       await this.runAction(args.actionHook, {
         ...this.recordingInfo(name),
@@ -564,7 +574,14 @@ export class Call {
   // ---- Helpers ---------------------------------------------------------------
 
   private nextRecordingName(): string {
-    return `${this.sid}-${++this.recordingCount}`;
+    const name = `${this.sid}-${++this.recordingCount}`;
+    this.deps.onRecording({ name, callSid: this.sid, createdAt: new Date().toISOString() });
+    return name;
+  }
+
+  private saveRecordingDuration(name: string, durationSeconds: number | undefined): void {
+    if (durationSeconds === undefined) return;
+    this.deps.onRecording({ name, callSid: this.sid, createdAt: new Date().toISOString(), durationSeconds });
   }
 
   private recordingInfo(name: string) {

@@ -103,7 +103,7 @@ flowchart LR
 | A redirect replaces the queue and kills the current verb | `call-session.js:2120-2175` | `Call.redirect` |
 | Fire each action/status hook exactly once | `sip_refer.js:129-140` | `Call.statusEvent`, `runAction` |
 | A timestamped HMAC on webhooks | `base-requestor.js:55-71` | `src/signing.ts` |
-| Drain gracefully on SIGTERM | `app.js:177-211` | **not yet** (see open questions) |
+| Drain gracefully on SIGTERM | `app.js:177-211` | `Gateway.drain`, `src/main.ts` |
 
 **Bugs seen in jambonz, to avoid.** All **CONFIRMED** by reading the code.
 - `ws-requestor.js:75` inverts its own list of message types that skip waiting for an ack.

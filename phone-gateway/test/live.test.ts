@@ -139,6 +139,7 @@ describe("live calls through Asterisk", { skip: !live && "Asterisk not running (
       webhookSecret: SECRET,
       ari: ariOptions,
       recordingsDir,
+      database: ":memory:",
       numbers: {
         "+15550001": { url: `${app.url}/play`, statusCallback: `${app.url}/status` },
         "+15550002": { url: `${app.url}/gather` },

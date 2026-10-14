@@ -78,6 +78,7 @@ describe("live speech: say and speech gather", { skip: !live && "needs asterisk/
       webhookSecret: "test-webhook-secret-123",
       ari: ariOptions,
       recordingsDir,
+      database: ":memory:",
       tts: { engine: "piper", cacheDir: path.join(dir, "cache"), piper: { url: SPEECH } },
       stt: { engine: "whisper", whisper: { url: SPEECH } },
       numbers: {
