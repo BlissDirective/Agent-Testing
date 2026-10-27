@@ -20,3 +20,19 @@
 - **Speech recognition of brand names.** Whisper sometimes misspells names on phone audio ("Acme" heard as "Acne"). Use `hints` for names you expect, or switch to Deepgram (supports keyterms) where accuracy matters.
 - **Deepgram and ElevenLabs are untested live.** Both are implemented and unit-tested against mock servers, but haven't been called with real keys from this environment.
 - **Several gateways at once.** SQLite suits one gateway per server. Running several against one database (or one Asterisk) needs Postgres and a rule for which gateway owns which calls.
+
+## Strawberry
+Public surface only. See `notes/strawberry-ARCHITECTURE.md`.
+
+- **Credit cost per action.** The public docs give no rate card. How many credits do a chat turn, a page read, a connector call or a transcription minute cost, and what are the model multipliers?
+- **Is the $0.001/credit meter the cost basis?** `meter_team_usage_monthly_credit` (0.1 cent per credit) exists in the Stripe price registry, but the docs say there is no team overage. Is it legacy, unused, or the internal cost basis?
+- **Where the agent loop runs.** In the desktop main process or on Strawberry's servers? Routines stopping when the app closes points to the client, but this isn't confirmed.
+- **Connector vendor.** Who supplies the "2,000+ apps"? An aggregator (Composio, Pipedream, Nango...) or in-house? Are OAuth tokens held server-side?
+- **Real connector list.** The in-app integration catalog isn't public. Do Shopify, WooCommerce, Yelp, Twilio, Google Business Profile or any POS actually exist as connectors?
+- **Browser-lane approvals.** How are risky clicks gated on arbitrary websites (form submits, purchases), as opposed to connector actions that have permission controls?
+- **Chat encryption keys.** Chats are restorable across devices and searchable, so does Strawberry hold the keys (not end-to-end)?
+- **Desktop shell.** Is it Electron? It's inferred from the "main/renderer process" wording and press coverage. Confirming it needs the binary, which is out of scope.
+- **Legal terms.** The privacy policy, AUP, business terms and T&Cs sit behind a Cloudflare JS challenge (403). Sub-processors, retention and DPA terms are unread.
+- **Trust Center.** It's a Vanta page; its content loads by API (not called). Is there a SOC 2 Type II report, or only "meets SOC 2 requirements"?
+- **"Use your ChatGPT plan".** What's the mechanism (OAuth to a ChatGPT subscription?), and which of its usage bypasses credits?
+- **Staff access to chats.** What does the `admin/analysis/chat/[chatId]` route expose to staff?
