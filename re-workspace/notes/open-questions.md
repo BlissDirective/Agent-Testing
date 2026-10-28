@@ -20,3 +20,17 @@
 - **Speech recognition of brand names.** Whisper sometimes misspells names on phone audio ("Acme" heard as "Acne"). Use `hints` for names you expect, or switch to Deepgram (supports keyterms) where accuracy matters.
 - **Deepgram and ElevenLabs are untested live.** Both are implemented and unit-tested against mock servers, but haven't been called with real keys from this environment.
 - **Several gateways at once.** SQLite suits one gateway per server. Running several against one database (or one Asterisk) needs Postgres and a rule for which gateway owns which calls.
+
+## Beside
+- **Credit rates beyond the help-center card.** Some actions have no published cost (lead capture is free, but what about outbound email via Gmail, GBP posts, or Housecall Pro writes?). The /pricing page publishes no rate card at all.
+- **Which "waitlist" modules are really live.** Marketing calls website, SEO, ads and reviews "waitlist", while the help center documents them running in agent.beta. We would need a signup to settle this, which is out of scope.
+- **The missing ToS sections.** Liability cap, indemnity, content license and the arbitration procedure/opt-out are absent from the served HTML. Is this a CMS bug or the actual contract? A cached or archived copy would answer it. Not fetched.
+- **Default state of Recording Consent.** The docs say "toggle it on", which implies off by default. Not confirmed.
+- **Is there AI disclosure in the receptionist's default greeting?** The blog leaves disclosure to the customer; the default script text isn't published.
+- **VoIP / carrier provider and A2P 10DLC handling.** The subprocessor list says only "VoIP Providers". Nothing about 10DLC brand/campaign registration was found.
+- **Contact enrichment vendor.** The marketing mock-up shows "Found LinkedIn profile and email address"; no matching subprocessor is listed.
+- **WorkflowAI and Qdrant roles.** Is the agent orchestration actually built on WorkflowAI? Inferred from the subprocessor list only.
+- **The other 15 integration pages.** Are they all Zapier-only? Only HubSpot and Square were checked.
+- **The true customer count and ARPU after the May 2026 plan refresh.** Public figures conflict (20k / 21k / 25k).
+- **Agency pricing / reseller terms.** These are only available via a sales demo.
+- **For you to decide:** whether Prolectio adopts a public credit/outcome rate card, a public live-demo number, and llms.txt plus markdown siblings (see `notes/beside-ARCHITECTURE.md` §9).

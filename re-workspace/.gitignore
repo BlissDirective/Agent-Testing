@@ -1,3 +1,6 @@
 # Fetched targets are third-party material; keep them out of git.
 target/*
 !target/.gitkeep
+# Working copies derived from targets (deobfuscated code, page text) are third-party too.
+work/*
+!work/.gitkeep
