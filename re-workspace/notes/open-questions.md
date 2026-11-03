@@ -27,7 +27,8 @@
 - **Default schedule timezone** when a schedule has none: probably the process's local zone (GUESS).
 - **Not read:** the `apps/ui/app/api/chat` proxy, push delivery via device tokens.
 - **For you to decide:**
-  - **Using Claude/ChatGPT subscription plans** (as Rerun does through the vendor CLIs). Check each vendor's terms before offering it; the design assumes API keys.
+  - ~~Subscription plans vs API keys~~ — **decided: Claude API key.**
   - **Hosting:** single VPS with Docker (MVP) vs. one VM per workspace (Rerun Cloud's model).
   - **Integrations breadth:** build MCP servers yourself, or use an aggregator (Composio, Pipedream).
-  - **Default approval policy:** autopilot, cautious or strict.
+  - ~~Default approval policy~~ — **decided: cautious (ask on risky actions).**
+  - **Embeddings for Mnemosyne:** Voyage key, OpenAI key, or local model (a Claude key doesn't cover embeddings). See `mnemosyne-integration.md` G3.

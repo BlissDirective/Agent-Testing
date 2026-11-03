@@ -4,6 +4,7 @@ This is a clean-room design. It's written from `notes/rerun-ARCHITECTURE.md` (be
 
 **Stack:** TypeScript on Node 22, Claude models, SQLite and Docker. It matches `voice-agent/` and `phone-gateway/`.
 **MVP scope:** the agent loop and tools, triggers (cron, webhook, chat), human-in-the-loop, and multi-agent calls with MCP.
+**Decided:** Claude API key; approval default "cautious" (ask on risky actions); memory = Mnemosyne sidecar (see `mnemosyne-integration.md`, which supersedes §7 below).
 
 ---
 
