@@ -8,3 +8,4 @@
 - `target/media-streams` from https://github.com/twilio/media-streams (2026-10-14T02:28Z, git commit 09d208b2ce2f6bc9b0ce4a4b05f929370d448bb6)
 - `target/twilio-node` from https://github.com/twilio/twilio-node (2026-10-14T02:28Z, git commit 1f261bdcf665bc50bc8ca5b67e407e723de07c68)
 - `target/jambonz-feature-server` from https://github.com/jambonz/jambonz-feature-server (2026-10-14T02:28Z, git commit 287883c1480bc1132acb8b50284945255fd36d43)
+- `target/rerun` from https://github.com/rerun-build/rerun (2026-11-03T03:00Z, git commit a6d63a4b542674ddd002e51b39ba0df6e0807bcc)
