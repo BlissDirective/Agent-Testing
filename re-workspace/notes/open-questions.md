@@ -31,4 +31,4 @@
   - **Hosting:** single VPS with Docker (MVP) vs. one VM per workspace (Rerun Cloud's model).
   - **Integrations breadth:** build MCP servers yourself, or use an aggregator (Composio, Pipedream).
   - ~~Default approval policy~~ — **decided: cautious (ask on risky actions).**
-  - **Embeddings for Mnemosyne:** Voyage key, OpenAI key, or local model (a Claude key doesn't cover embeddings). See `mnemosyne-integration.md` G3.
+  - ~~Embeddings for Mnemosyne~~ — **decided: Voyage.**

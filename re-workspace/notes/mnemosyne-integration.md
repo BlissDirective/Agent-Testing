@@ -13,6 +13,8 @@ Mnemosyne already does more than Rerun's memory: identity per writer, rings with
 **Decisions so far** (from you):
 - Claude API key (no subscription plans).
 - Approval default **"cautious"**: ask on risky actions.
+- Embeddings: **Voyage** (`provider = "voyage"`, `voyage-3-large`, `VOYAGE_API_KEY` in the memory service's environment only).
+- Fix G1 and G2 upstream: **done in BlissDirective/Mnemosyne#1** (`memory_prime`, `memory_reload_roster` + SIGHUP, `token_sha256`, `mnemosyne new-token`).
 
 ---
 
@@ -80,9 +82,9 @@ The platform's policy gate (design §5) and Mnemosyne's guardrail become one flo
 
 | # | Gap (CONFIRMED in code) | Impact | Fix |
 |---|---|---|---|
-| G1 | **The roster is static.** Writers come from `config.toml`, loaded once at startup (`config.py:139`; `server.py:64-72` caches the engine). | Creating an agent in the platform needs a writer entry and a token, and then a sidecar restart. | MVP: the platform writes `config.toml` and the env file, then restarts `memory` (a few seconds). Later: add a reload signal or an owner-only `writer_upsert` tool to Mnemosyne. |
-| G2 | **`prime` isn't an MCP tool**, nor a gateway route. The tool list is `server.py:356-669`, and `prime` is CLI only. | The platform can't fetch the standing-context block for the system prompt. | Add a read-only `memory_prime(query?, k, max_chars)` tool, about 20 lines wrapping `engine.prime`. Until then, use `memory_recall` only. |
-| G3 | **No embeddings from Anthropic.** Providers are `dev`, `openai` and `voyage` (`embeddings.py:148-201`). A Claude API key doesn't cover them. | `dev` is weak: hit@5 0.65 on your decision-log eval (README §Measuring recall). | Decide: Voyage key (Anthropic's recommended embedding partner; asymmetric query and document support is already built in), OpenAI key, or a local `sentence-transformers` model (adds torch, ~2 GB image). |
+| G1 (fixed in PR #1) | **The roster is static.** Writers come from `config.toml`, loaded once at startup (`config.py:139`; `server.py:64-72` caches the engine). | Creating an agent in the platform needs a writer entry and a token, and then a sidecar restart. | MVP: the platform writes `config.toml` and the env file, then restarts `memory` (a few seconds). Later: add a reload signal or an owner-only `writer_upsert` tool to Mnemosyne. |
+| G2 (fixed in PR #1) | **`prime` isn't an MCP tool**, nor a gateway route. The tool list is `server.py:356-669`, and `prime` is CLI only. | The platform can't fetch the standing-context block for the system prompt. | Add a read-only `memory_prime(query?, k, max_chars)` tool, about 20 lines wrapping `engine.prime`. Until then, use `memory_recall` only. |
+| G3 (decided: Voyage) | **No embeddings from Anthropic.** Providers are `dev`, `openai` and `voyage` (`embeddings.py:148-201`). A Claude API key doesn't cover them. | `dev` is weak: hit@5 0.65 on your decision-log eval (README §Measuring recall). | Decide: Voyage key (Anthropic's recommended embedding partner; asymmetric query and document support is already built in), OpenAI key, or a local `sentence-transformers` model (adds torch, ~2 GB image). |
 | G4 | **Temporary sub-agents** (`delegate_tasks`) have no identity. | Their writes would be anonymous. | Give them the parent's token with **recall only** (the platform filters out write tools). The parent writes results. |
 | G5 | **The sandbox could bypass the rings.** If the memory home were mounted into a sandbox, an agent could edit `notes/` directly. That gets journaled as `external`, but skips the ring rules. | Ring and policy integrity. | Never mount the memory home or the tokens into the sandbox. Agents reach memory only through the platform's MCP client. |
 | G6 | **One writer process per file store.** The engine lock serialises all writes. | Fine at MVP scale. With many concurrent agents, writes queue up. | When needed, move to `storage = "postgres"`, with one workspace per tenant and advisory locks allowing several replicas (README §Storage). |
@@ -113,3 +115,10 @@ The platform's policy gate (design §5) and Mnemosyne's guardrail become one flo
 - **Prompt injection via memory.** Already mitigated by Mnemosyne's labelling, its suspicion check (`guardrails.py`), owner-only policies, and our tags around recalled text. Keep both layers.
 - **Rings mapped wrongly** could leak a team's notes to another team. Add a platform test where agent A (team sales) can't recall agent B's `team:ops` memory.
 - **Journal forks** if two memory processes ever share one file store. Run exactly one `memory` replica on the file backend.
+
+## 7. Agent onboarding flow (with PR #1)
+
+1. The platform calls `mnemosyne new-token <handle> --tier 1 --teams <box>`, or computes the same thing itself: a 32-byte random token and its SHA-256.
+2. It appends the `config_line` under `[writers]` in the memory service's `config.toml`, then calls `memory_reload_roster` as owner (or `docker kill -s HUP memory`).
+3. It stores the token encrypted in its `secrets` table and uses it only in its own MCP client for that agent.
+4. Removing an agent means deleting the line and reloading; the token stops working at once.
